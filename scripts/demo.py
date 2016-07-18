@@ -6,6 +6,7 @@ import std_srvs.srv
 import smach_ros
 from smach_ros import ServiceState, SimpleActionState
 from lwr_peg_in_hole.srv import UpdateSceneService, UpdateSceneServiceRequest
+from lwr_peg_in_hole.srv import EstimateHolesService, EstimateHolesServiceRequest, EstimateHolesServiceResponse
 from lwr_peg_in_hole.msg import RobotMoveGoal, RobotMoveAction
 from ar_track_alvar_msgs.msg import AlvarMarkers
 
@@ -54,6 +55,11 @@ class MarkerCB(smach.State):
 def robot_goal_cb(userdata, goal):
     goal = RobotMoveGoal(userdata.look_poses[userdata.pose_index],False)
     return goal
+    
+@smach.cb_interface(output_keys=['holes_poses'], outcomes=['succeeded'])
+def estimate_response_cb(userdata, response):
+    userdata.holes_poses = response.holes_poses
+    return
 
 def main():
     rospy.init_node('smach_usecase_executive')
@@ -64,11 +70,15 @@ def main():
     sm.userdata.look_poses = [[1.64647737821113, -0.06401549522493077, -0.37189732272924836, -1.7298683559749657, -0.010311991928772635, 1.2837615843359318, -1.5951452987645744], 
                               [1.7450482624189192, -0.2792615169621282, -0.7326299417794155, -1.6953566682827867, -0.1489061268374794, 1.5780836265219742, -1.8916098999458724], 
                               [1.9830371040607986, -0.0006218652097080835, 0.009821608276626925, -1.7048954646128616, -0.0576423149512717, 1.3746182539883787, -0.910279200952389]]   
+    sm.userdata.holes_poses = None
     
     with sm:
         req_update = UpdateSceneServiceRequest()
         req_update.object_name = sm.userdata.object_name
         req_update.tag_id = sm.userdata.tag_id
+        
+        req_estimate = EstimateHolesServiceRequest()
+        req_estimate.object_name = sm.userdata.object_name
                                  
         tag_sm = smach.StateMachine(outcomes=['succeeded'], input_keys = ['object_name', 'look_poses', 'tag_id' ])
         tag_sm.userdata.pose_index = 0
@@ -80,8 +90,7 @@ def main():
             
         smach.StateMachine.add('FIND_TAG', tag_sm, {'succeeded':'UPDATE_SCENE'})
         smach.StateMachine.add('UPDATE_SCENE', ServiceState('update_scene', UpdateSceneService, req_update), {'succeeded':'COMPUTE_HOLES', 'aborted':'UPDATE_SCENE', 'preempted':'UPDATE_SCENE'})
-        smach.StateMachine.add('COMPUTE_HOLES', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'PLACE_FASTENER','aborted':'COMPUTE_HOLES', 'preempted':'COMPUTE_HOLES'})
-            
+        smach.StateMachine.add('COMPUTE_HOLES', ServiceState('estimate_holes', EstimateHolesService, request = req_estimate, response_cb=estimate_response_cb), {'succeeded':'PLACE_FASTENER','aborted':'COMPUTE_HOLES', 'preempted':'COMPUTE_HOLES'})
                         
         place_sm = smach.StateMachine(outcomes=['succeeded'])
         with place_sm:
