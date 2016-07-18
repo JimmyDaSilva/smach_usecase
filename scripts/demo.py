@@ -58,7 +58,7 @@ def robot_goal_cb(userdata, goal):
 def main():
     rospy.init_node('smach_usecase_executive')
 
-    sm = smach.StateMachine(outcomes=['succeeded','aborted','preempted'])
+    sm = smach.StateMachine(outcomes=[])
     sm.userdata.tag_id = 0
     sm.userdata.object_name = 'plaque2'
     sm.userdata.look_poses = [[1.64647737821113, -0.06401549522493077, -0.37189732272924836, -1.7298683559749657, -0.010311991928772635, 1.2837615843359318, -1.5951452987645744], 
@@ -70,32 +70,32 @@ def main():
         req_update.object_name = sm.userdata.object_name
         req_update.tag_id = sm.userdata.tag_id
                                  
-        tag_sm = smach.StateMachine(outcomes=['succeeded','aborted','preempted'], input_keys = ['object_name', 'look_poses', 'tag_id' ])
+        tag_sm = smach.StateMachine(outcomes=['succeeded'], input_keys = ['object_name', 'look_poses', 'tag_id' ])
         tag_sm.userdata.pose_index = 0
         tag_sm.userdata.nb_poses = len(sm.userdata.look_poses)
         with tag_sm:
-            smach.StateMachine.add('POSE_I', SimpleActionState('robot_mover', RobotMoveAction, goal_cb=robot_goal_cb),{'succeeded':'TAG?','aborted':'POSE_I'})
-            smach.StateMachine.add('TAG?', MarkerCB(), {'found_tag':'UPDATE_SCENE', 'failed':'I++', 'error':'TAG?'})
-            smach.StateMachine.add('UPDATE_SCENE', ServiceState('update_scene', UpdateSceneService, req_update), {'succeeded':'COMPUTE_HOLES', 'aborted':'UPDATE_SCENE'})
-            smach.StateMachine.add('COMPUTE_HOLES', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'succeeded','aborted':'aborted'})
-            #smach.StateMachine.add('I++', PoseIteratorCB(), {'succeeded':'POSE_I'}, {'index_in':'pose_index', 'poses_in':'look_poses', 'index_out':'pose_index'})
+            smach.StateMachine.add('POSE_I', SimpleActionState('robot_mover', RobotMoveAction, goal_cb=robot_goal_cb),{'succeeded':'TAG?','aborted':'POSE_I','preempted':'POSE_I'})
+            smach.StateMachine.add('TAG?', MarkerCB(), {'found_tag':'succeeded', 'failed':'I++', 'error':'TAG?'})
             smach.StateMachine.add('I++', PoseIteratorCB(), {'succeeded':'POSE_I'})
             
-        smach.StateMachine.add('FIND_TAG', tag_sm, {'succeeded':'PLACE_FASTENER'})
+        smach.StateMachine.add('FIND_TAG', tag_sm, {'succeeded':'UPDATE_SCENE'})
+        smach.StateMachine.add('UPDATE_SCENE', ServiceState('update_scene', UpdateSceneService, req_update), {'succeeded':'COMPUTE_HOLES', 'aborted':'UPDATE_SCENE', 'preempted':'UPDATE_SCENE'})
+        smach.StateMachine.add('COMPUTE_HOLES', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'PLACE_FASTENER','aborted':'COMPUTE_HOLES', 'preempted':'COMPUTE_HOLES'})
+            
                         
-        place_sm = smach.StateMachine(outcomes=['succeeded','aborted','preempted'])
+        place_sm = smach.StateMachine(outcomes=['succeeded'])
         with place_sm:
-            smach.StateMachine.add('TAKE_EPINGLE', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'GO_TO_START','aborted':'TAKE_EPINGLE'})                               
-            smach.StateMachine.add('GO_TO_START', ServiceState('reset', std_srvs.srv.Empty),{'succeeded':'PUT_EPINGLE','aborted':'GO_TO_START'})                               
-            smach.StateMachine.add('PUT_EPINGLE', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'succeeded','aborted':'PUT_EPINGLE'})                               
-        smach.StateMachine.add('PLACE_FASTENER', place_sm, {'succeeded':'REMOVE_FASTENER', 'aborted':'aborted'})
+            smach.StateMachine.add('TAKE_EPINGLE', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'GO_TO_START','aborted':'TAKE_EPINGLE', 'preempted':'TAKE_EPINGLE'})                               
+            smach.StateMachine.add('GO_TO_START', ServiceState('reset', std_srvs.srv.Empty),{'succeeded':'PUT_EPINGLE','aborted':'GO_TO_START', 'preempted':'GO_TO_START'})                               
+            smach.StateMachine.add('PUT_EPINGLE', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'succeeded','aborted':'PUT_EPINGLE', 'preempted':'PUT_EPINGLE'})                               
+        smach.StateMachine.add('PLACE_FASTENER', place_sm, {'succeeded':'REMOVE_FASTENER'})
 
-        remove_sm = smach.StateMachine(outcomes=['succeeded','aborted','preempted'])
+        remove_sm = smach.StateMachine(outcomes=['succeeded'])
         with remove_sm:
-            smach.StateMachine.add('TAKE_EPINGLE', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'GO_TO_START','aborted':'TAKE_EPINGLE'})
-            smach.StateMachine.add('GO_TO_START', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'PUT_EPINGLE','aborted':'GO_TO_START'})                               
-            smach.StateMachine.add('PUT_EPINGLE', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'succeeded','aborted':'PUT_EPINGLE'})
-        smach.StateMachine.add('REMOVE_FASTENER', remove_sm, {'succeeded':'PLACE_FASTENER', 'aborted':'aborted'})
+            smach.StateMachine.add('TAKE_EPINGLE', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'GO_TO_START','aborted':'TAKE_EPINGLE', 'preempted':'TAKE_EPINGLE'})
+            smach.StateMachine.add('GO_TO_START', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'PUT_EPINGLE','aborted':'GO_TO_START', 'preempted':'GO_TO_START'})                               
+            smach.StateMachine.add('PUT_EPINGLE', ServiceState('reset', std_srvs.srv.Empty), {'succeeded':'succeeded','aborted':'PUT_EPINGLE', 'preempted':'PUT_EPINGLE'})
+        smach.StateMachine.add('REMOVE_FASTENER', remove_sm, {'succeeded':'PLACE_FASTENER'})
                   
 
     sis = smach_ros.IntrospectionServer('demo_introspection_server', sm, '/DEMO')
